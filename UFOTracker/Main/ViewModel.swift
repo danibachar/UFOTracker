@@ -48,33 +48,44 @@ final class MainViewModelImpl: ObservableObject, MainViewModel {
             .receive(on: RunLoop.main)
             .sink { error in
                 print("DB: - currentCategory error \(error) ")
-            } receiveValue: { sightings in
-                self.sightings = sightings
+            } receiveValue: { [weak self] sightings in
+                self?.sightings = sightings
             }
             .store(in: &cancelBag)
         
         // Add logic
         $addPressed
             .dropFirst()
-            .map { _ -> [UFOType] in
+            .map { [weak self] _ -> [UFOType] in
+                guard let self = self else { return [] }
                 return self.categories[self.selectedCategoryIndex].types
             }
-            .flatMap { allTypes in
+            .flatMap { [weak self] allTypes -> AnyPublisher<[Sighting], Error> in
+                guard let self = self else {
+                    return Just([])
+                        .setFailureType(to: Error.self)
+                        .eraseToAnyPublisher()
+                }
                 return ufoService
                     .createNewSighting(Sighting.random(by: allTypes), for: self.categories[self.selectedCategoryIndex])
             }
             .receive(on: RunLoop.main)
             .sink(receiveCompletion: { error in
                 print("DB: $addPressed error \(error)")
-            }, receiveValue: { sightings in
-                self.sightings = sightings
+            }, receiveValue: { [weak self]sightings in
+                self?.sightings = sightings
             })
             .store(in: &cancelBag)
         
         // Delete logic
         $deleteSwipe
             .dropFirst()
-            .flatMap { indexSet -> AnyPublisher<[Sighting], Error> in
+            .flatMap { [weak self] indexSet -> AnyPublisher<[Sighting], Error> in
+                guard let self = self else {
+                    return Just([])
+                        .setFailureType(to: Error.self)
+                        .eraseToAnyPublisher()
+                }
                 var sightings = self.sightings
                 sightings.remove(atOffsets: indexSet)
                 
@@ -83,17 +94,17 @@ final class MainViewModelImpl: ObservableObject, MainViewModel {
             .receive(on: RunLoop.main)
             .sink(receiveCompletion: { error in
                 print("DB: $deleteSwipe error \(error)")
-            }, receiveValue: { newSightings in
-                self.sightings = newSightings
+            }, receiveValue: { [weak self] newSightings in
+                self?.sightings = newSightings
             })
             .store(in: &cancelBag)
         
         ufoService.fetchCategories()
             .receive(on: DispatchQueue.main)
             .sink(receiveCompletion: { error in
-                print("DB: fetchCategories cpmletion - \(error)")
-            }, receiveValue: { categories in
-                self.categories = categories
+                print("DB: fetchCategories completion - \(error)")
+            }, receiveValue: { [weak self] categories in
+                self?.categories = categories
             })
             .store(in: &cancelBag)
     }
